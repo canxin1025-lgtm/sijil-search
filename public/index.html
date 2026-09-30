@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semakan Sijil Murid</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --panel: #ffffff; --ink: #1c2733; --muted: #5d6b7a;
+    --line: #d9e0e8; --accent: #0b5cad; --accent-soft: #e3eefa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12181f; --panel: #1b232c; --ink: #e8eef4; --muted: #9aa8b6;
+            --line: #2c3743; --accent: #6db3f2; --accent-soft: #1d3247; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .picker { display: grid; grid-template-columns: 1fr 2fr; gap: 12px;
+            background: var(--panel); border: 1px solid var(--line);
+            border-radius: 8px; padding: 16px; }
+  @media (max-width: 600px) { .picker { grid-template-columns: 1fr; } }
+  label { display: block; font-weight: 600; margin-bottom: 4px; }
+  select { width: 100%; padding: 10px; font-size: 1rem; color: var(--ink);
+           background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  select:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+  select:disabled { opacity: .5; }
+  #status { margin: 16px 0; color: var(--muted); }
+  #status.error { color: #c0392b; }
+  .summary { margin: 24px 0 8px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  .summary h2 { margin: 0; font-size: 1.2rem; }
+  .badge { background: var(--accent-soft); color: var(--accent); padding: 2px 10px;
+           border-radius: 999px; font-size: .9rem; font-weight: 600; }
+  .wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; min-width: 820px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--accent-soft); font-size: .9rem; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.idx { white-space: nowrap; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Semakan Sijil Murid</h1>
+  <p class="sub">Pilih kelas, kemudian pilih nama murid.</p>
+
+  <div class="picker">
+    <div>
+      <label for="kelas">Kelas</label>
+      <select id="kelas" disabled><option value="">Memuatkan…</option></select>
+    </div>
+    <div>
+      <label for="murid">Nama murid</label>
+      <select id="murid" disabled><option value="">— pilih kelas dahulu —</option></select>
+    </div>
+  </div>
+
+  <p id="status" role="status"></p>
+  <section id="result" hidden></section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const kelasSel = $("kelas"), muridSel = $("murid"), statusEl = $("status"), resultEl = $("result");
+let data = [];
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function setStatus(msg, isError) {
+  statusEl.textContent = msg || "";
+  statusEl.className = isError ? "error" : "";
+}
+
+async function load() {
+  try {
+    const res = await fetch("/api/data");
+    if (!res.ok) throw new Error();
+    data = await res.json();
+    const classes = [...new Set(data.map((r) => r.kelas))].sort((a, b) => a.localeCompare(b, "ms", { numeric: true }));
+    kelasSel.innerHTML = '<option value="">— pilih kelas —</option>' +
+      classes.map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join("");
+    kelasSel.disabled = false;
+  } catch {
+    kelasSel.innerHTML = "<option>Gagal memuatkan</option>";
+    setStatus("Data tidak dapat dimuatkan. Sila cuba lagi atau hubungi pentadbir.", true);
+  }
+}
+
+// 同班 → 学生列表。用 pid(身份证哈希)区分人，所以同班同名也会分开
+function studentsOf(kelas) {
+  const map = new Map();
+  for (const r of data) {
+    if (r.kelas !== kelas) continue;
+    if (!map.has(r.pid)) map.set(r.pid, { pid: r.pid, name: r.name, ic4: r.ic4 });
+  }
+  const list = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "ms"));
+  const nameCount = {};
+  list.forEach((s) => (nameCount[s.name] = (nameCount[s.name] || 0) + 1));
+  list.forEach((s) => {
+    s.label = nameCount[s.name] > 1 && s.ic4 ? `${s.name}  (IC ****${s.ic4})` : s.name;
+  });
+  return list;
+}
+
+kelasSel.addEventListener("change", () => {
+  resultEl.hidden = true;
+  setStatus("");
+  const k = kelasSel.value;
+  if (!k) {
+    muridSel.disabled = true;
+    muridSel.innerHTML = '<option value="">— pilih kelas dahulu —</option>';
+    return;
+  }
+  const list = studentsOf(k);
+  muridSel.innerHTML = '<option value="">— pilih nama murid —</option>' +
+    list.map((s) => `<option value="${esc(s.pid)}">${esc(s.label)}</option>`).join("");
+  muridSel.disabled = false;
+  setStatus(`${list.length} orang murid dalam kelas ${k}.`);
+});
+
+muridSel.addEventListener("change", () => {
+  const pid = muridSel.value, k = kelasSel.value;
+  if (!pid) { resultEl.hidden = true; return; }
+  const rows = data.filter((r) => r.pid === pid && r.kelas === k);
+  const name = rows[0].name;
+  const body = rows.map((r) => `
+    <tr>
+      <td class="idx">${esc(r.index)}</td>
+      <td>${esc(r.contest)}</td>
+      <td>${esc(r.achievement)}</td>
+      <td>${esc(r.kebenaran)}</td>
+      <td>${esc(r.pengiktirafan)}</td>
+      <td>${esc(r.pelibatan)}</td>
+      <td>${esc(r.peringkat)}</td>
+    </tr>`).join("");
+  resultEl.innerHTML = `
+    <div class="summary">
+      <h2>${esc(name)}</h2>
+      <span>${esc(k)}</span>
+      <span class="badge">${rows.length} sijil</span>
+    </div>
+    <div class="wrap">
+      <table>
+        <thead><tr>
+          <th>Indeks sijil</th><th>Nama pertandingan</th><th>Pencapaian</th>
+          <th>Surat kebenaran</th><th>Surat pengiktirafan</th><th>Pelibatan</th><th>Peringkat</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+  resultEl.hidden = false;
+  setStatus("");
+});
+
+load();
+</script>
+</body>
+</html>
