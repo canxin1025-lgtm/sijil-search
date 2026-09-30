@@ -76,6 +76,22 @@ function setStatus(msg, isError) {
   statusEl.className = isError ? "error" : "";
 }
 
+// 排序规则：Peringkat (Antarabangsa > Kebangsaan > Negeri > Daerah > Sekolah)
+// 然后 Pelibatan (1 在 2 前面)，最后按 Indeks
+const rankPeringkat = (p) => {
+  const t = (p || "").toUpperCase().trim();
+  if (t.startsWith("ANTARABANGSA")) return 1;
+  if (t.startsWith("KEBANGSAAN")) return 2;
+  if (t.startsWith("NEGERI")) return 3;
+  if (t.startsWith("DAERAH")) return 4;
+  if (t.startsWith("SEKOLAH")) return 5;
+  return 99; // 空白或其他，排最后
+};
+const rankPelibatan = (p) => {
+  const n = parseInt(p, 10);
+  return Number.isNaN(n) ? 99 : n;
+};
+
 async function load() {
   try {
     const res = await fetch("/api/data");
@@ -126,7 +142,13 @@ kelasSel.addEventListener("change", () => {
 muridSel.addEventListener("change", () => {
   const pid = muridSel.value, k = kelasSel.value;
   if (!pid) { resultEl.hidden = true; return; }
-  const rows = data.filter((r) => r.pid === pid && r.kelas === k);
+  const rows = data
+    .filter((r) => r.pid === pid && r.kelas === k)
+    .sort((a, b) =>
+      rankPeringkat(a.peringkat) - rankPeringkat(b.peringkat) ||
+      rankPelibatan(a.pelibatan) - rankPelibatan(b.pelibatan) ||
+      String(a.index).localeCompare(String(b.index), "ms", { numeric: true })
+    );
   const name = rows[0].name;
   const body = rows.map((r) => `
     <tr>
