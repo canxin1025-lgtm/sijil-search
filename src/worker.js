@@ -44,8 +44,10 @@ async function handleData(env) {
   const records = [];
 
   // 第 1 行是标题，从第 2 行开始
+  // A 序号, B 比赛, C 名字, D 身份证, E 班级, F 成就, G kebenaran,
+  // H pengiktirafan, I pelibatan, J peringkat, K takwim, L bukan takwim
   for (const r of table.slice(1)) {
-    const [index, contest, name, ic, kelas, achievement, kebenaran, pengiktirafan, pelibatan, peringkat] =
+    const [index, contest, name, ic, kelas, achievement, kebenaran, pengiktirafan, pelibatan, peringkat, takwim, bukanTakwim] =
       r.map((x) => (x || "").trim());
     if (!name || !kelas) continue;
     const icDigits = ic.replace(/\D/g, "");
@@ -55,7 +57,7 @@ async function handleData(env) {
       ic4: icDigits.slice(-4),
       kelas: norm(kelas),
       name: norm(name),
-      index, contest, achievement, kebenaran, pengiktirafan, pelibatan, peringkat,
+      index, contest, achievement, kebenaran, pengiktirafan, pelibatan, peringkat, takwim, bukanTakwim,
     });
   }
 
